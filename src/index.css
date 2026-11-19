@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-utride-red: #B5121B;
+  --color-utride-red-dark: #8F1720;
+  --color-utride-black: #171717;
+  --color-utride-gray-light: #F3F4F6;
+  --color-utride-gray-mid: #D1D5DB;
+  --color-utride-gray-neutral: #6B7280;
+  --font-sans: "Inter", "Roboto", system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-utride-gray-light);
+  color: var(--color-utride-black);
+  font-family: var(--font-sans);
+}
