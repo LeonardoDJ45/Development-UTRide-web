@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   Users,
-  Car,
   Search,
   Edit3,
   CheckCircle2,
@@ -18,6 +17,14 @@ import {
   MapPin,
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+
+const CARRERAS_UTR = [
+  'TICs',
+  'Lengua Inglesa',
+  'Mecatrónica',
+  'Capital Humano',
+  'Diseño',
+];
 
 export default function AdminDashboard({ user, showToast }) {
   const [mainSection, setMainSection] = useState('users'); // 'users' | 'rides'
@@ -226,7 +233,7 @@ export default function AdminDashboard({ user, showToast }) {
       first_name: targetUser.first_name || '',
       last_name: targetUser.last_name || '',
       matricula: targetUser.matricula || '',
-      career: targetUser.career || 'Estudiante UTR',
+      career: targetUser.career || '',
       phone: targetUser.phone || '',
       role: targetUser.role || 'Pasajero',
       driver_status: targetUser.driver_status || 'Sin solicitud',
@@ -825,14 +832,24 @@ export default function AdminDashboard({ user, showToast }) {
                 <label className="mb-1 block font-bold text-[#171717]">
                   Carrera / Área
                 </label>
-                <input
-                  type="text"
+                <select
                   value={editForm.career}
                   onChange={(e) =>
                     setEditForm({ ...editForm, career: e.target.value })
                   }
-                  className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 outline-none focus:border-[#B5121B]"
-                />
+                  className="w-full rounded-lg border border-[#D1D5DB] bg-white px-3 py-2 outline-none focus:border-[#B5121B]"
+                >
+                  <option value="">Selecciona una carrera...</option>
+                  {!CARRERAS_UTR.includes(editForm.career) &&
+                    editForm.career && (
+                      <option value={editForm.career}>{editForm.career}</option>
+                    )}
+                  {CARRERAS_UTR.map((carrera) => (
+                    <option key={carrera} value={carrera}>
+                      {carrera}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Control de Rol y Validación de Conductor */}
