@@ -15,6 +15,10 @@ export default function Requisitos({ navigateTo, user, setAuthModal }) {
       desc: 'Automóvil particular propio o familiar con placas vigentes y verificación vehicular al corriente.',
     },
     {
+      title: 'Póliza de seguro vehicular',
+      desc: 'Seguro de auto vigente con cobertura mínima de Responsabilidad Civil ante terceros.',
+    },
+    {
       title: 'Compromiso de puntualidad y seguridad',
       desc: 'Apegarse al reglamento de sana convivencia universitaria y respeto a los puntos de encuentro pactados.',
     },

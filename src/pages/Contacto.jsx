@@ -45,7 +45,7 @@ export default function Contacto({ showToast }) {
             <h4 className="mb-2 text-xs font-bold tracking-wider text-[#6B7280] uppercase">
               Correo del Proyecto
             </h4>
-            <p className="text-xs text-[#171717]">UTRide.Movilidad.Compartida@gmail.com</p>
+            <p className="text-xs text-[#171717]">soporte.utride@utr.edu.mx</p>
             <p className="mt-1 text-[11px] text-[#6B7280]">
               Atención de Lunes a Viernes 08:00 a 16:00 hrs
             </p>

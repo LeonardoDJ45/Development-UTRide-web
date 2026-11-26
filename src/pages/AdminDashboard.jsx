@@ -1,598 +1,340 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  ShieldCheck,
+  Shield,
   Users,
+  Car,
+  UserPlus,
+  UserMinus,
   Search,
-  Edit3,
-  CheckCircle2,
-  UserX,
-  UserCheck,
-  Route,
-  Ban,
-  Trash2,
-  Loader2,
-  X,
-  Save,
-  Clock,
+  RefreshCw,
   MapPin,
+  Clock
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
-const CARRERAS_UTR = [
-  'TICs',
-  'Lengua Inglesa',
-  'Mecatrónica',
-  'Capital Humano',
-  'Diseño',
-];
-
-export default function AdminDashboard({ user, showToast }) {
-  const [mainSection, setMainSection] = useState('users'); // 'users' | 'rides'
-  const [usersList, setUsersList] = useState([]);
-  const [vehiclesMap, setVehiclesMap] = useState({});
-  const [ridesList, setRidesList] = useState([]);
+export default function AdminDashboard({ user, profile, showToast }) {
+  const [users, setUsers] = useState([]);
+  const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState(null);
 
-  // Filtros
-  const [userFilter, setUserFilter] = useState('all'); // 'all' | 'drivers' | 'pending' | 'passengers'
-  const [rideFilter, setRideFilter] = useState('all'); // 'all' | 'activo' | 'cancelado'
-  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('users');
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // Modal de edición de usuario/conductor
-  const [editingUser, setEditingUser] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [editForm, setEditForm] = useState({
-    first_name: '',
-    last_name: '',
-    matricula: '',
-    career: '',
-    phone: '',
-    role: 'Pasajero',
-    driver_status: 'Sin solicitud',
-    vehicle_id: null,
-    brand: '',
-    model: '',
-    year: '',
-    plates: '',
-  });
-
-  const fetchAllData = async () => {
+  const fetchAdminData = async () => {
     setLoading(true);
+    try {
+      const [profilesRes, ridesRes] = await Promise.all([
+        supabase.from('profiles').select('*'),
+        supabase.from('rides').select('*')
+      ]);
 
-    // 1. Perfiles
-    const { data: profilesData, error: profilesError } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('first_name', { ascending: true });
-
-    if (profilesError) {
-      showToast('Error al cargar usuarios: ' + profilesError.message, 'error');
-    } else {
-      setUsersList(profilesData || []);
-    }
-
-    // 2. Vehículos
-    const { data: vehiclesData } = await supabase
-      .from('vehicles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    const vMap = {};
-    (vehiclesData || []).forEach((v) => {
-      if (!vMap[v.driver_id]) {
-        vMap[v.driver_id] = v;
+      if (profilesRes.error) {
+        console.error('Error en profiles:', profilesRes.error);
+        if (showToast) showToast(`Error usuarios: ${profilesRes.error.message}`, 'error');
+      } else {
+        setUsers(profilesRes.data || []);
       }
-    });
-    setVehiclesMap(vMap);
 
-    // 3. Rutas
-    const { data: ridesData, error: ridesError } = await supabase
-      .from('rides')
-      .select('*')
-      .order('id', { ascending: false });
-
-    if (ridesError) {
-      showToast('Error al cargar rutas: ' + ridesError.message, 'error');
-    } else {
-      setRidesList(ridesData || []);
+      if (ridesRes.error) {
+        console.error('Error en rides:', ridesRes.error);
+        if (showToast) showToast(`Error rutas: ${ridesRes.error.message}`, 'error');
+      } else {
+        setRides(ridesRes.data || []);
+      }
+    } catch (err) {
+      console.error('Error general en AdminDashboard:', err);
+      if (showToast) {
+        showToast('No se pudieron cargar los datos del panel administrativo.', 'error');
+      }
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   useEffect(() => {
-    fetchAllData();
+    fetchAdminData();
   }, []);
 
-  if (!user?.isAdminHead) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <ShieldCheck className="mx-auto mb-3 h-12 w-12 text-[#DC2626]" />
-        <h2 className="text-xl font-bold text-[#171717]">Acceso Restringido</h2>
-        <p className="mt-1 text-sm text-[#6B7280]">
-          Esta sección es exclusiva para cuentas con rol de Administrador Head.
-        </p>
-      </div>
-    );
-  }
-
-  // Acción rápida: Validar o Dar de Alta como Conductor
-  const handleApproveDriver = async (targetUser) => {
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        role: 'Conductor',
-        driver_status: 'Verificado',
-      })
-      .eq('id', targetUser.id);
-
-    if (error) {
-      showToast('Error al validar conductor: ' + error.message, 'error');
-      return;
-    }
-
-    showToast(
-      `${targetUser.first_name} ha sido validado y dado de alta como Conductor`,
-      'success'
-    );
-    fetchAllData();
+  const isDriverRole = (role) => {
+    const r = (role || '').toLowerCase();
+    return r === 'driver' || r === 'conductor';
   };
 
-  // Acción rápida: Dar de Baja como Conductor (revoca rol y cancela sus rutas activas)
-  const handleRevokeDriver = async (targetUser) => {
-    const confirmed = window.confirm(
-      `¿Confirmas dar de baja como conductor a ${targetUser.first_name} ${targetUser.last_name}? Pasará a rol Pasajero y sus rutas activas se marcarán como canceladas.`
-    );
-    if (!confirmed) return;
-
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        role: 'Pasajero',
-        driver_status: 'Dado de baja',
-      })
-      .eq('id', targetUser.id);
-
-    if (error) {
-      showToast('Error al dar de baja conductor: ' + error.message, 'error');
-      return;
-    }
-
-    // Dar de baja sus rutas activas automáticamente
-    await supabase
-      .from('rides')
-      .update({ estado: 'cancelado' })
-      .eq('driver_id', targetUser.id)
-      .eq('estado', 'activo');
-
-    showToast(
-      `Conductor ${targetUser.first_name} dado de baja y rutas suspendidas`,
-      'info'
-    );
-    fetchAllData();
+  const isAdminRole = (u) => {
+    const r = (u?.role || '').toLowerCase();
+    return r === 'admin' || (u?.email || '').toLowerCase() === 'st5303@utr.edu.mx';
   };
 
-  // Acción sobre rutas: Dar de baja (cambiar estado a cancelado)
-  const handleDeactivateRide = async (ride) => {
-    const { error } = await supabase
-      .from('rides')
-      .update({ estado: 'cancelado' })
-      .eq('id', ride.id);
+  const metrics = useMemo(() => {
+    const totalUsers = users.length;
+    const totalDrivers = users.filter((u) => isDriverRole(u.role)).length;
+    const totalPassengers = users.filter((u) => !isAdminRole(u) && !isDriverRole(u.role)).length;
+    const activeRides = rides.filter((r) => r.estado === 'activo').length;
 
-    if (error) {
-      showToast('No se pudo dar de baja la ruta: ' + error.message, 'error');
-      return;
-    }
+    return {
+      totalUsers,
+      totalDrivers,
+      totalPassengers,
+      activeRides
+    };
+  }, [users, rides]);
 
-    showToast(`Ruta #${ride.id} dada de baja correctamente`, 'info');
-    fetchAllData();
-  };
+  const handleDriverRoleToggle = async (targetUserId, makeDriver) => {
+    const newRole = makeDriver ? 'Conductor' : 'Pasajero';
+    setUpdatingId(targetUserId);
 
-  // Acción sobre rutas: Reactivar ruta
-  const handleReactivateRide = async (ride) => {
-    const { error } = await supabase
-      .from('rides')
-      .update({ estado: 'activo' })
-      .eq('id', ride.id);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('id', targetUserId)
+        .select();
 
-    if (error) {
-      showToast('No se pudo reactivar la ruta: ' + error.message, 'error');
-      return;
-    }
+      if (error) throw error;
 
-    showToast(`Ruta #${ride.id} reactivada`, 'success');
-    fetchAllData();
-  };
-
-  // Acción sobre rutas: Eliminar registro permanentemente
-  const handleDeleteRide = async (ride) => {
-    const confirmed = window.confirm(
-      `¿Eliminar permanentemente la ruta "${ride.origen} → ${ride.destino}"? Esta acción no se puede deshacer.`
-    );
-    if (!confirmed) return;
-
-    const { error } = await supabase.from('rides').delete().eq('id', ride.id);
-
-    if (error) {
-      showToast(
-        'No se puede eliminar (puede tener reservas vinculadas). Usa "Dar de baja" en su lugar.',
-        'error'
-      );
-      return;
-    }
-
-    showToast(`Ruta #${ride.id} eliminada`, 'success');
-    fetchAllData();
-  };
-
-  // Abrir modal de edición
-  const openEditModal = (targetUser) => {
-    const userVehicle = vehiclesMap[targetUser.id];
-    setEditingUser(targetUser);
-    setEditForm({
-      first_name: targetUser.first_name || '',
-      last_name: targetUser.last_name || '',
-      matricula: targetUser.matricula || '',
-      career: targetUser.career || '',
-      phone: targetUser.phone || '',
-      role: targetUser.role || 'Pasajero',
-      driver_status: targetUser.driver_status || 'Sin solicitud',
-      vehicle_id: userVehicle?.id || null,
-      brand: userVehicle?.brand || '',
-      model: userVehicle?.model || '',
-      year: userVehicle?.year || '',
-      plates: userVehicle?.plates || '',
-    });
-  };
-
-  const handleSaveUserChanges = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-
-    // Si el admin marca estado "Verificado", asegurar que el rol también sea "Conductor"
-    const finalRole =
-      editForm.driver_status === 'Verificado' ? 'Conductor' : editForm.role;
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({
-        first_name: editForm.first_name.trim(),
-        last_name: editForm.last_name.trim(),
-        matricula: editForm.matricula.trim(),
-        career: editForm.career.trim(),
-        phone: editForm.phone.trim(),
-        role: finalRole,
-        driver_status: editForm.driver_status,
-      })
-      .eq('id', editingUser.id);
-
-    if (profileError) {
-      setSaving(false);
-      showToast('Error al actualizar perfil: ' + profileError.message, 'error');
-      return;
-    }
-
-    // Guardar o actualizar vehículo en public.vehicles
-    if (editForm.brand.trim() || editForm.model.trim() || editForm.plates.trim()) {
-      const vehiclePayload = {
-        driver_id: editingUser.id,
-        brand: editForm.brand.trim() || 'Por definir',
-        model: editForm.model.trim() || 'Por definir',
-        year: editForm.year ? Number(editForm.year) : null,
-        plates: editForm.plates.trim().toUpperCase(),
-      };
-
-      if (editForm.vehicle_id) {
-        await supabase
-          .from('vehicles')
-          .update(vehiclePayload)
-          .eq('id', editForm.vehicle_id);
-      } else {
-        await supabase.from('vehicles').insert([vehiclePayload]);
+      if (!data || data.length === 0) {
+        throw new Error('Supabase bloqueó la actualización (revisa políticas RLS).');
       }
-    }
 
-    setSaving(false);
-    showToast('Cambios guardados exitosamente', 'success');
-    setEditingUser(null);
-    fetchAllData();
+      setUsers((prev) =>
+        prev.map((u) => (u.id === targetUserId ? { ...u, role: newRole } : u))
+      );
+
+      if (showToast) {
+        showToast(
+          makeDriver
+            ? 'Usuario dado de alta como conductor.'
+            : 'Usuario dado de baja como conductor.',
+          'success'
+        );
+      }
+    } catch (err) {
+      console.error('Error al actualizar rol:', err);
+      if (showToast) {
+        showToast(`Error: ${err.message}`, 'error');
+      }
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
-  // Filtrado de usuarios
-  const filteredUsers = usersList.filter((u) => {
-    const isDriver =
-      u.role === 'Conductor' || u.driver_status === 'Verificado';
-    const isPending = u.driver_status === 'Pendiente de validación';
+  const filteredUsers = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return users;
 
-    if (userFilter === 'drivers' && !isDriver) return false;
-    if (userFilter === 'pending' && !isPending) return false;
-    if (userFilter === 'passengers' && (isDriver || isPending)) return false;
+    return users.filter((u) => {
+      const fullName = `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase();
+      const email = (u.email || '').toLowerCase();
+      const matricula = (u.matricula || '').toLowerCase();
+      const plates = (u.vehicle_plates || '').toLowerCase();
 
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-
-    const fullName = `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase();
-    const email = (u.email || '').toLowerCase();
-    const matricula = (u.matricula || '').toLowerCase();
-
-    return fullName.includes(q) || email.includes(q) || matricula.includes(q);
-  });
-
-  // Filtrado de rutas
-  const filteredRides = ridesList.filter((r) => {
-    if (rideFilter !== 'all' && (r.estado || '').toLowerCase() !== rideFilter) {
-      return false;
-    }
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-
-    const driver = `${r.nombre_conductor || ''} ${r.apellido_conductor || ''}`.toLowerCase();
-    const origin = (r.origen || '').toLowerCase();
-    const dest = (r.destino || '').toLowerCase();
-
-    return driver.includes(q) || origin.includes(q) || dest.includes(q);
-  });
-
-  // Métricas
-  const totalDrivers = usersList.filter(
-    (u) => u.role === 'Conductor' || u.driver_status === 'Verificado'
-  ).length;
-  const pendingDrivers = usersList.filter(
-    (u) => u.driver_status === 'Pendiente de validación'
-  ).length;
-  const activeRidesCount = ridesList.filter(
-    (r) => (r.estado || '').toLowerCase() === 'activo'
-  ).length;
+      return (
+        fullName.includes(term) ||
+        email.includes(term) ||
+        matricula.includes(term) ||
+        plates.includes(term)
+      );
+    });
+  }, [users, searchTerm]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-      {/* Cabecera */}
-      <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-bold tracking-wider text-[#B5121B] uppercase">
-            <ShieldCheck className="h-3.5 w-3.5" /> Administración Central UTRide
-          </span>
-          <h1 className="mt-2 text-3xl font-extrabold text-[#171717]">
-            Panel de Control · Administrador Head
-          </h1>
-          <p className="mt-1 text-sm text-[#6B7280]">
-            Alta, validación y baja de conductores, edición de pasajeros y control de rutas activas.
-          </p>
-        </div>
-
-        {/* Selector Principal de Módulo */}
-        <div className="inline-flex rounded-xl border border-[#D1D5DB] bg-white p-1 shadow-sm">
-          <button
-            onClick={() => {
-              setMainSection('users');
-              setSearchQuery('');
-            }}
-            className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-all ${
-              mainSection === 'users'
-                ? 'bg-[#171717] text-white'
-                : 'text-[#6B7280] hover:text-[#171717]'
-            }`}
-          >
-            <Users className="h-4 w-4" /> Usuarios y Conductores
-          </button>
-          <button
-            onClick={() => {
-              setMainSection('rides');
-              setSearchQuery('');
-            }}
-            className={`flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-all ${
-              mainSection === 'rides'
-                ? 'bg-[#B5121B] text-white'
-                : 'text-[#6B7280] hover:text-[#171717]'
-            }`}
-          >
-            <Route className="h-4 w-4" /> Rutas y Viajes ({ridesList.length})
-          </button>
-        </div>
-      </div>
-
-      {/* Tarjetas de Indicadores */}
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <div className="rounded-xl border border-[#D1D5DB] bg-white p-5 shadow-sm">
-          <span className="text-[11px] font-bold text-[#6B7280] uppercase">
-            Comunidad Registrada
-          </span>
-          <p className="mt-1 text-2xl font-black text-[#171717]">
-            {usersList.length}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-[#D1D5DB] bg-white p-5 shadow-sm">
-          <span className="text-[11px] font-bold text-[#6B7280] uppercase">
-            Conductores Verificados
-          </span>
-          <p className="mt-1 text-2xl font-black text-[#16A34A]">
-            {totalDrivers}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-[#D1D5DB] bg-white p-5 shadow-sm">
-          <span className="text-[11px] font-bold text-[#6B7280] uppercase">
-            Solicitudes por Validar
-          </span>
-          <p className="mt-1 text-2xl font-black text-[#F59E0B]">
-            {pendingDrivers}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-[#D1D5DB] bg-white p-5 shadow-sm">
-          <span className="text-[11px] font-bold text-[#6B7280] uppercase">
-            Rutas Activas
-          </span>
-          <p className="mt-1 text-2xl font-black text-[#B5121B]">
-            {activeRidesCount}
-          </p>
-        </div>
-      </div>
-
-      {/* SECCIÓN 1: GESTIÓN DE USUARIOS Y CONDUCTORES */}
-      {mainSection === 'users' ? (
-        <>
-          <div className="mb-6 flex flex-col justify-between gap-4 rounded-2xl border border-[#D1D5DB] bg-white p-4 shadow-sm sm:flex-row sm:items-center">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setUserFilter('all')}
-                className={`cursor-pointer rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
-                  userFilter === 'all'
-                    ? 'bg-[#171717] text-white'
-                    : 'bg-gray-100 text-[#6B7280] hover:text-[#171717]'
-                }`}
-              >
-                Todos ({usersList.length})
-              </button>
-              <button
-                onClick={() => setUserFilter('pending')}
-                className={`cursor-pointer rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
-                  userFilter === 'pending'
-                    ? 'bg-[#F59E0B] text-white'
-                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-                }`}
-              >
-                Por Validar ({pendingDrivers})
-              </button>
-              <button
-                onClick={() => setUserFilter('drivers')}
-                className={`cursor-pointer rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
-                  userFilter === 'drivers'
-                    ? 'bg-[#B5121B] text-white'
-                    : 'bg-gray-100 text-[#6B7280] hover:text-[#171717]'
-                }`}
-              >
-                Conductores ({totalDrivers})
-              </button>
-              <button
-                onClick={() => setUserFilter('passengers')}
-                className={`cursor-pointer rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
-                  userFilter === 'passengers'
-                    ? 'bg-[#171717] text-white'
-                    : 'bg-gray-100 text-[#6B7280] hover:text-[#171717]'
-                }`}
-              >
-                Pasajeros
-              </button>
+    <div className="bg-[#F3F4F6] min-h-screen py-10 px-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+          <div>
+            <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#B5121B] bg-red-50 px-3 py-1 rounded-full mb-2">
+              <Shield className="h-3.5 w-3.5" />
+              Panel Administrativo • Admin Head
             </div>
-
-            <div className="relative">
-              <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-[#6B7280]" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por nombre, correo o matrícula..."
-                className="w-full rounded-lg border border-[#D1D5DB] py-2 pr-3 pl-9 text-xs outline-none focus:border-[#B5121B] sm:w-72"
-              />
-            </div>
+            <h1 className="text-3xl font-bold text-[#171717]">Gestión y Supervisión UTRide</h1>
+            <p className="text-sm text-[#6B7280] mt-1">
+              Control de comunidad universitaria, altas de conductores y rutas activas.
+            </p>
           </div>
 
-          {loading ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-[#D1D5DB] bg-white py-16 text-[#6B7280]">
-              <Loader2 className="mb-2 h-8 w-8 animate-spin text-[#B5121B]" />
-              <span className="text-xs font-semibold">
-                Cargando padrón universitario...
-              </span>
+          <button
+            onClick={fetchAdminData}
+            disabled={loading}
+            className="inline-flex items-center gap-2 bg-white border border-[#D1D5DB] hover:bg-gray-50 text-[#171717] font-semibold px-4 py-2.5 rounded-xl text-sm transition self-start md:self-auto cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-[#B5121B]' : ''}`} />
+            Actualizar datos
+          </button>
+        </div>
+
+        {/* Tarjetas KPI */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          <div className="bg-white p-6 rounded-2xl border border-[#D1D5DB] shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+              USUARIOS REGISTRADOS
+            </p>
+            <p className="text-3xl font-extrabold text-[#171717]">{metrics.totalUsers}</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-[#D1D5DB] shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+              CONDUCTORES REGISTRADOS
+            </p>
+            <p className="text-3xl font-extrabold text-[#16A34A]">{metrics.totalDrivers}</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-[#D1D5DB] shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+              PASAJEROS REGISTRADOS
+            </p>
+            <p className="text-3xl font-extrabold text-[#171717]">{metrics.totalPassengers}</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-[#D1D5DB] shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+              RUTAS ACTIVAS
+            </p>
+            <p className="text-3xl font-extrabold text-[#B5121B]">{metrics.activeRides}</p>
+          </div>
+        </div>
+
+        {/* Pestañas */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${
+              activeTab === 'users'
+                ? 'bg-[#171717] text-white'
+                : 'bg-white text-[#171717] border border-[#D1D5DB] hover:bg-gray-50'
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            Usuarios y Conductores ({users.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('rides')}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${
+              activeTab === 'rides'
+                ? 'bg-[#171717] text-white'
+                : 'bg-white text-[#171717] border border-[#D1D5DB] hover:bg-gray-50'
+            }`}
+          >
+            <Car className="h-4 w-4" />
+            Supervisión de Rutas ({rides.length})
+          </button>
+        </div>
+
+        {/* Tabla de Usuarios */}
+        {activeTab === 'users' && (
+          <div className="bg-white border border-[#D1D5DB] rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-[#E5E7EB]">
+              <div className="relative max-w-md">
+                <Search className="h-4 w-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Buscar por nombre, correo, matrícula o placas..."
+                  className="w-full pl-10 pr-4 py-2 border border-[#D1D5DB] rounded-xl text-sm focus:outline-none focus:border-[#B5121B]"
+                />
+              </div>
             </div>
-          ) : (
-            <div className="overflow-hidden rounded-2xl border border-[#D1D5DB] bg-white shadow-sm">
+
+            {loading ? (
+              <div className="p-12 text-center text-sm text-[#6B7280]">
+                Cargando registros de la comunidad UTR...
+              </div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="p-12 text-center text-sm text-[#6B7280]">
+                No se encontraron usuarios registrados.
+              </div>
+            ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="border-b border-[#D1D5DB] bg-[#F3F4F6] text-[11px] font-bold text-[#6B7280] uppercase">
-                    <tr>
-                      <th className="px-5 py-3.5">Usuario / Matrícula</th>
-                      <th className="px-5 py-3.5">Contacto</th>
-                      <th className="px-5 py-3.5">Rol</th>
-                      <th className="px-5 py-3.5">Estado Conductor / Vehículo</th>
-                      <th className="px-5 py-3.5 text-right">Gestión</th>
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB] text-xs font-bold uppercase text-[#6B7280]">
+                      <th className="py-3.5 px-5">Estudiante</th>
+                      <th className="py-3.5 px-5">Matrícula / Carrera</th>
+                      <th className="py-3.5 px-5">Vehículo Registrado</th>
+                      <th className="py-3.5 px-5">Rol</th>
+                      <th className="py-3.5 px-5 text-right">Acciones</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-[#E5E7EB] text-sm">
                     {filteredUsers.map((u) => {
-                      const vehicle = vehiclesMap[u.id];
-                      const isDriver =
-                        u.role === 'Conductor' ||
-                        u.driver_status === 'Verificado';
-
+                      const userIsDriver = isDriverRole(u.role);
+                      const userIsAdmin = isAdminRole(u);
                       return (
-                        <tr key={u.id} className="hover:bg-gray-50/80">
-                          <td className="px-5 py-4">
-                            <div className="font-bold text-[#171717]">
-                              {u.first_name} {u.last_name}
-                            </div>
-                            <div className="text-[11px] text-[#6B7280]">
-                              {u.matricula || 'Sin matrícula'} ·{' '}
-                              {u.career || 'UTR'}
-                            </div>
+                        <tr key={u.id} className="hover:bg-gray-50/70 transition">
+                          <td className="py-4 px-5">
+                            <p className="font-semibold text-[#171717]">
+                              {u.first_name || u.last_name
+                                ? `${u.first_name || ''} ${u.last_name || ''}`.trim()
+                                : 'Sin nombre registrado'}
+                            </p>
+                            <p className="text-xs text-[#6B7280]">{u.email}</p>
+                            {u.phone && <p className="text-xs text-[#6B7280]">{u.phone}</p>}
                           </td>
-                          <td className="px-5 py-4">
-                            <div className="text-[#171717]">{u.email}</div>
-                            <div className="text-[11px] text-[#6B7280]">
-                              {u.phone || 'Sin teléfono'}
-                            </div>
+
+                          <td className="py-4 px-5">
+                            <p className="font-medium text-[#171717]">{u.matricula || '—'}</p>
+                            <p className="text-xs text-[#6B7280]">{u.career || 'Sin carrera'}</p>
                           </td>
-                          <td className="px-5 py-4">
-                            <span
-                              className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                                isDriver
-                                  ? 'bg-red-50 text-[#B5121B]'
-                                  : 'bg-gray-100 text-[#171717]'
-                              }`}
-                            >
-                              {u.role || 'Pasajero'}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4">
-                            <span
-                              className={`inline-block rounded px-2 py-0.5 text-[11px] font-bold ${
-                                u.driver_status === 'Verificado'
-                                  ? 'bg-green-50 text-[#16A34A]'
-                                  : u.driver_status === 'Pendiente de validación'
-                                    ? 'bg-amber-50 text-amber-700'
-                                    : u.driver_status === 'Dado de baja'
-                                      ? 'bg-red-50 text-[#DC2626]'
-                                      : 'text-[#6B7280]'
-                              }`}
-                            >
-                              {u.driver_status || 'Sin solicitud'}
-                            </span>
-                            {vehicle && (
-                              <div className="mt-0.5 text-[11px] text-[#6B7280]">
-                                {vehicle.brand} {vehicle.model} ({vehicle.plates})
+
+                          <td className="py-4 px-5">
+                            {u.vehicle_model || u.vehicle_plates ? (
+                              <div>
+                                <p className="font-medium text-[#171717]">
+                                  {u.vehicle_model || 'Modelo no especificado'}
+                                </p>
+                                <span className="inline-block mt-0.5 text-xs font-mono bg-[#F3F4F6] px-2 py-0.5 rounded text-[#171717]">
+                                  {u.vehicle_plates || 'SIN PLACAS'}
+                                </span>
                               </div>
+                            ) : (
+                              <span className="text-xs text-[#6B7280]">Sin vehículo</span>
                             )}
                           </td>
-                          <td className="px-5 py-4">
-                            <div className="flex items-center justify-end gap-2">
-                              {/* Botón Validar / Dar de alta Conductor */}
-                              {!isDriver ? (
-                                <button
-                                  onClick={() => handleApproveDriver(u)}
-                                  title="Validar y dar de alta como Conductor"
-                                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#16A34A] px-2.5 py-1.5 text-[11px] font-bold text-white shadow-xs hover:bg-green-700"
-                                >
-                                  <UserCheck className="h-3.5 w-3.5" /> Alta Conductor
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleRevokeDriver(u)}
-                                  title="Dar de baja como Conductor"
-                                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-bold text-[#DC2626] hover:bg-[#DC2626] hover:text-white"
-                                >
-                                  <UserX className="h-3.5 w-3.5" /> Baja Conductor
-                                </button>
-                              )}
 
-                              {/* Botón Editar Datos */}
+                          <td className="py-4 px-5">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                userIsAdmin
+                                  ? 'bg-red-100 text-red-800'
+                                  : userIsDriver
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-[#F3F4F6] text-[#6B7280]'
+                              }`}
+                            >
+                              {userIsAdmin
+                                ? 'Administrador'
+                                : userIsDriver
+                                ? 'Conductor'
+                                : 'Pasajero'}
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-5 text-right">
+                            {userIsAdmin ? (
+                              <span className="text-xs font-semibold text-[#6B7280]">
+                                Administrador
+                              </span>
+                            ) : userIsDriver ? (
                               <button
-                                onClick={() => openEditModal(u)}
-                                className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-[#D1D5DB] bg-white px-2.5 py-1.5 text-[11px] font-bold text-[#171717] transition-colors hover:border-[#B5121B] hover:text-[#B5121B]"
+                                onClick={() => handleDriverRoleToggle(u.id, false)}
+                                disabled={updatingId === u.id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition cursor-pointer disabled:opacity-40"
                               >
-                                <Edit3 className="h-3.5 w-3.5" /> Editar
+                                <UserMinus className="h-3.5 w-3.5" />
+                                Dar de baja
                               </button>
-                            </div>
+                            ) : (
+                              <button
+                                onClick={() => handleDriverRoleToggle(u.id, true)}
+                                disabled={updatingId === u.id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-700 text-white transition cursor-pointer disabled:opacity-40"
+                              >
+                                <UserPlus className="h-3.5 w-3.5" />
+                                Dar de alta
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -600,375 +342,88 @@ export default function AdminDashboard({ user, showToast }) {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
-        </>
-      ) : (
-        /* SECCIÓN 2: GESTIÓN Y BAJA DE RUTAS */
-        <>
-          <div className="mb-6 flex flex-col justify-between gap-4 rounded-2xl border border-[#D1D5DB] bg-white p-4 shadow-sm sm:flex-row sm:items-center">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setRideFilter('all')}
-                className={`cursor-pointer rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
-                  rideFilter === 'all'
-                    ? 'bg-[#171717] text-white'
-                    : 'bg-gray-100 text-[#6B7280] hover:text-[#171717]'
-                }`}
-              >
-                Todas ({ridesList.length})
-              </button>
-              <button
-                onClick={() => setRideFilter('activo')}
-                className={`cursor-pointer rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
-                  rideFilter === 'activo'
-                    ? 'bg-[#16A34A] text-white'
-                    : 'bg-green-50 text-[#16A34A] hover:bg-green-100'
-                }`}
-              >
-                Activas ({activeRidesCount})
-              </button>
-              <button
-                onClick={() => setRideFilter('cancelado')}
-                className={`cursor-pointer rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
-                  rideFilter === 'cancelado'
-                    ? 'bg-[#DC2626] text-white'
-                    : 'bg-red-50 text-[#DC2626] hover:bg-red-100'
-                }`}
-              >
-                Dadas de Baja
-              </button>
-            </div>
-
-            <div className="relative">
-              <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-[#6B7280]" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar ruta por origen, destino o conductor..."
-                className="w-full rounded-lg border border-[#D1D5DB] py-2 pr-3 pl-9 text-xs outline-none focus:border-[#B5121B] sm:w-80"
-              />
-            </div>
+            )}
           </div>
+        )}
 
-          <div className="overflow-hidden rounded-2xl border border-[#D1D5DB] bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="border-b border-[#D1D5DB] bg-[#F3F4F6] text-[11px] font-bold text-[#6B7280] uppercase">
-                  <tr>
-                    <th className="px-5 py-3.5">ID / Conductor</th>
-                    <th className="px-5 py-3.5">Trayecto (Origen → Destino)</th>
-                    <th className="px-5 py-3.5">Horario y Cupo</th>
-                    <th className="px-5 py-3.5">Estado</th>
-                    <th className="px-5 py-3.5 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredRides.map((r) => {
-                    const isActive = (r.estado || '').toLowerCase() === 'activo';
-                    return (
-                      <tr key={r.id} className="hover:bg-gray-50/80">
-                        <td className="px-5 py-4">
-                          <span className="font-mono text-[11px] font-bold text-[#6B7280]">
-                            #{r.id}
-                          </span>
-                          <div className="font-bold text-[#171717]">
+        {/* Tabla de Rutas */}
+        {activeTab === 'rides' && (
+          <div className="bg-white border border-[#D1D5DB] rounded-2xl shadow-sm overflow-hidden">
+            {rides.length === 0 ? (
+              <div className="p-12 text-center text-sm text-[#6B7280]">
+                No hay rutas registradas actualmente.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB] text-xs font-bold uppercase text-[#6B7280]">
+                      <th className="py-3.5 px-5">Conductor</th>
+                      <th className="py-3.5 px-5">Trayecto</th>
+                      <th className="py-3.5 px-5">Horario</th>
+                      <th className="py-3.5 px-5">Asientos / Cuota</th>
+                      <th className="py-3.5 px-5">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5E7EB] text-sm">
+                    {rides.map((r) => (
+                      <tr key={r.id} className="hover:bg-gray-50/70 transition">
+                        <td className="py-4 px-5">
+                          <p className="font-semibold text-[#171717]">
                             {r.nombre_conductor} {r.apellido_conductor}
-                          </div>
-                          <div className="text-[11px] text-[#6B7280]">
-                            {r.marca_auto} {r.modelo_auto} {r.anio_auto || ''}
-                          </div>
+                          </p>
+                          <p className="text-xs text-[#6B7280]">
+                            {r.marca_auto} {r.modelo_auto} {r.anio_auto ? `(${r.anio_auto})` : ''}
+                          </p>
                         </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-1 font-semibold text-[#171717]">
+
+                        <td className="py-4 px-5">
+                          <p className="text-xs text-[#171717] flex items-center gap-1">
                             <MapPin className="h-3.5 w-3.5 text-[#B5121B]" />
-                            {r.origen}
-                          </div>
-                          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#6B7280]">
-                            <MapPin className="h-3.5 w-3.5 text-[#16A34A]" />
-                            {r.destino}
-                          </div>
+                            <strong>Origen:</strong> {r.origen}
+                          </p>
+                          <p className="text-xs text-[#6B7280] flex items-center gap-1 mt-0.5">
+                            <MapPin className="h-3.5 w-3.5 text-gray-500" />
+                            <strong>Destino:</strong> {r.destino}
+                          </p>
                         </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-1 font-semibold text-[#171717]">
+
+                        <td className="py-4 px-5 font-medium text-[#171717]">
+                          <span className="inline-flex items-center gap-1">
                             <Clock className="h-3.5 w-3.5 text-[#B5121B]" />
-                            {r.hora_salida ? r.hora_salida.slice(0, 5) : '--:--'} hrs
-                          </div>
-                          <div className="mt-0.5 text-[11px] text-[#6B7280]">
-                            {r.asientos_disponibles ?? 0} asientos · $
-                            {r.precio_pasajero ?? 10} MXN
-                          </div>
+                            {r.hora_salida?.slice(0, 5)} hrs
+                          </span>
                         </td>
-                        <td className="px-5 py-4">
+
+                        <td className="py-4 px-5">
+                          <p className="font-medium text-[#171717]">
+                            {r.asientos_disponibles} disponibles
+                          </p>
+                          <p className="text-xs font-semibold text-green-700">
+                            ${r.precio_pasajero} MXN
+                          </p>
+                        </td>
+
+                        <td className="py-4 px-5">
                           <span
-                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${
-                              isActive
-                                ? 'bg-green-50 text-[#16A34A]'
-                                : 'bg-red-50 text-[#DC2626]'
+                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
+                              r.estado === 'activo'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 text-gray-700'
                             }`}
                           >
-                            {r.estado || 'sin estado'}
+                            {r.estado}
                           </span>
                         </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center justify-end gap-2">
-                            {isActive ? (
-                              <button
-                                onClick={() => handleDeactivateRide(r)}
-                                className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-800 hover:bg-amber-600 hover:text-white"
-                              >
-                                <Ban className="h-3.5 w-3.5" /> Dar de baja ruta
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleReactivateRide(r)}
-                                className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-green-300 bg-green-50 px-2.5 py-1.5 text-[11px] font-bold text-[#16A34A] hover:bg-[#16A34A] hover:text-white"
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Reactivar
-                              </button>
-                            )}
-
-                            <button
-                              onClick={() => handleDeleteRide(r)}
-                              title="Eliminar registro"
-                              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-[#DC2626] hover:bg-[#DC2626] hover:text-white"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        </>
-      )}
-
-      {/* Modal de Edición de Usuario / Conductor */}
-      {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#D1D5DB] bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between border-b border-[#D1D5DB] pb-3">
-              <div>
-                <h3 className="text-base font-bold text-[#171717]">
-                  Editar Perfil y Permisos
-                </h3>
-                <p className="text-[11px] text-[#6B7280]">{editingUser.email}</p>
-              </div>
-              <button
-                onClick={() => setEditingUser(null)}
-                className="cursor-pointer rounded-lg p-1 text-[#6B7280] hover:bg-gray-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveUserChanges} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block font-bold text-[#171717]">
-                    Nombre(s)
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editForm.first_name}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, first_name: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 outline-none focus:border-[#B5121B]"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block font-bold text-[#171717]">
-                    Apellido(s)
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editForm.last_name}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, last_name: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 outline-none focus:border-[#B5121B]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block font-bold text-[#171717]">
-                    Matrícula
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.matricula}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, matricula: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 outline-none focus:border-[#B5121B]"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block font-bold text-[#171717]">
-                    Teléfono
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.phone}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, phone: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 outline-none focus:border-[#B5121B]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block font-bold text-[#171717]">
-                  Carrera / Área
-                </label>
-                <select
-                  value={editForm.career}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, career: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-[#D1D5DB] bg-white px-3 py-2 outline-none focus:border-[#B5121B]"
-                >
-                  <option value="">Selecciona una carrera...</option>
-                  {!CARRERAS_UTR.includes(editForm.career) &&
-                    editForm.career && (
-                      <option value={editForm.career}>{editForm.career}</option>
-                    )}
-                  {CARRERAS_UTR.map((carrera) => (
-                    <option key={carrera} value={carrera}>
-                      {carrera}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Control de Rol y Validación de Conductor */}
-              <div className="grid grid-cols-2 gap-3 rounded-xl bg-[#F3F4F6] p-3">
-                <div>
-                  <label className="mb-1 block font-bold text-[#171717]">
-                    Rol en Sistema
-                  </label>
-                  <select
-                    value={editForm.role}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, role: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-[#D1D5DB] bg-white px-2.5 py-2 outline-none focus:border-[#B5121B]"
-                  >
-                    <option value="Pasajero">Pasajero</option>
-                    <option value="Conductor">Conductor</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block font-bold text-[#171717]">
-                    Estado Conductor
-                  </label>
-                  <select
-                    value={editForm.driver_status}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, driver_status: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-[#D1D5DB] bg-white px-2.5 py-2 outline-none focus:border-[#B5121B]"
-                  >
-                    <option value="Sin solicitud">Sin solicitud</option>
-                    <option value="Pendiente de validación">
-                      Pendiente de validación
-                    </option>
-                    <option value="Verificado">Verificado (Alta)</option>
-                    <option value="Dado de baja">Dado de baja</option>
-                    <option value="Rechazado">Rechazado</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Datos del Vehículo (Tabla vehicles) */}
-              <div className="border-t border-gray-200 pt-3">
-                <h4 className="mb-2 font-bold text-[#171717]">
-                  Datos del Vehículo (Alta / Edición de Conductor)
-                </h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-[#6B7280]">Marca</label>
-                    <input
-                      type="text"
-                      value={editForm.brand}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, brand: e.target.value })
-                      }
-                      placeholder="Ej. Nissan"
-                      className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 outline-none focus:border-[#B5121B]"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[#6B7280]">Modelo</label>
-                    <input
-                      type="text"
-                      value={editForm.model}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, model: e.target.value })
-                      }
-                      placeholder="Ej. Versa"
-                      className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 outline-none focus:border-[#B5121B]"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[#6B7280]">Año</label>
-                    <input
-                      type="number"
-                      value={editForm.year}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, year: e.target.value })
-                      }
-                      placeholder="2021"
-                      className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 outline-none focus:border-[#B5121B]"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[#6B7280]">Placas</label>
-                    <input
-                      type="text"
-                      value={editForm.plates}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, plates: e.target.value })
-                      }
-                      placeholder="ABC-123-D"
-                      className="w-full rounded-lg border border-[#D1D5DB] px-3 py-2 uppercase outline-none focus:border-[#B5121B]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="cursor-pointer rounded-lg border border-[#D1D5DB] px-4 py-2 font-bold text-[#6B7280]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#B5121B] px-5 py-2 font-bold text-white shadow hover:bg-[#8F1720] disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4" />
-                  {saving ? 'Guardando...' : 'Guardar Cambios'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -1,224 +1,216 @@
-import { Car, LogOut, Menu, ShieldCheck, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Car, Menu, X, Shield, User, LogOut } from 'lucide-react';
 
 export default function Navbar({
   currentView,
-  navigateTo,
+  onNavigate,
   user,
-  handleLogout,
-  setAuthModal,
-  mobileMenuOpen,
-  setMobileMenuOpen,
+  isAuthenticated,
+  onOpenAuth,
+  onLogout,
 }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const isAdmin =
+    user?.role?.toLowerCase() === 'admin' ||
+    user?.isAdmin === true ||
+    user?.email?.toLowerCase() === 'st5303@utr.edu.mx';
+
   const navItems = [
     { id: 'home', label: 'Inicio' },
+    { id: 'rides', label: 'Rutas Activas' },
     { id: 'how-it-works', label: '¿Cómo funciona?' },
-    { id: 'requirements', label: 'Requisitos Conductor' },
-    { id: 'rides', label: 'Viajes y Rutas', badge: 'MVP' },
-    { id: 'faq', label: 'Preguntas' },
+    { id: 'requirements', label: 'Requisitos' },
+    { id: 'faq', label: 'FAQ' },
     { id: 'contact', label: 'Contacto' },
   ];
 
+  const handleNavClick = (viewId) => {
+    onNavigate(viewId);
+    setMobileMenuOpen(false);
+  };
+
   return (
-    <header className="sticky top-0 z-40 border-b border-[#D1D5DB]/80 bg-white shadow-sm">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-18 items-center justify-between">
-          {/* Logo UTRide */}
-          <div
-            className="flex cursor-pointer items-center space-x-3 py-2"
-            onClick={() => navigateTo('home')}
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#B5121B] text-white shadow-md">
-              <Car className="h-6 w-6 stroke-[2.2]" />
-            </div>
-            <div className="flex flex-col">
-              <span className="flex items-center text-2xl leading-none font-black tracking-tight text-[#171717]">
-                UT<span className="text-[#B5121B]">Ride</span>
-              </span>
-              <span className="text-[10px] font-semibold tracking-wider text-[#6B7280] uppercase">
-                El Retoño
-              </span>
-            </div>
+    <header className="sticky top-0 z-40 bg-[#171717] text-white border-b border-white/10 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        {/* Logo UTRide */}
+        <button
+          type="button"
+          onClick={() => handleNavClick('home')}
+          className="flex items-center gap-2.5 cursor-pointer group"
+        >
+          <div className="bg-[#B5121B] p-2 rounded-lg group-hover:bg-[#8F1720] transition">
+            <Car className="h-5 w-5 text-white" />
           </div>
+          <span className="text-xl font-extrabold tracking-tight">
+            UT<span className="text-[#B5121B]">Ride</span>
+          </span>
+        </button>
 
-          {/* Navegación Escritorio */}
-          <nav className="hidden items-center space-x-1 lg:flex">
-            {navItems.map((item) => (
+        {/* Navegación Desktop */}
+        <nav className="hidden lg:flex items-center gap-6">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleNavClick(item.id)}
+              className={`text-sm font-medium transition cursor-pointer ${
+                currentView === item.id
+                  ? 'text-white font-bold border-b-2 border-[#B5121B] py-5'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+
+          {isAuthenticated && isAdmin && (
+            <button
+              type="button"
+              onClick={() => handleNavClick('admin')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                currentView === 'admin'
+                  ? 'bg-[#B5121B] text-white'
+                  : 'bg-red-500/20 text-[#ff8a90] border border-[#B5121B]/50 hover:bg-[#B5121B] hover:text-white'
+              }`}
+            >
+              <Shield className="h-3.5 w-3.5" />
+              Panel Admin
+            </button>
+          )}
+        </nav>
+
+        {/* Acciones de sesión Desktop */}
+        <div className="hidden lg:flex items-center gap-3">
+          {!isAuthenticated ? (
+            <>
               <button
-                key={item.id}
-                onClick={() => navigateTo(item.id)}
-                className={`flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  currentView === item.id
-                    ? 'bg-red-50 font-semibold text-[#B5121B]'
-                    : 'text-[#171717] hover:bg-gray-100 hover:text-[#B5121B]'
+                type="button"
+                onClick={() => onOpenAuth('login')}
+                className="text-sm font-semibold text-gray-200 hover:text-white px-3 py-2 transition cursor-pointer"
+              >
+                Iniciar sesión
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenAuth('register')}
+                className="bg-[#B5121B] hover:bg-[#8F1720] text-white text-sm font-semibold px-4 py-2 rounded-lg transition cursor-pointer"
+              >
+                Registrarse
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => handleNavClick('profile')}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  currentView === 'profile'
+                    ? 'bg-white text-[#171717]'
+                    : 'bg-white/10 hover:bg-white/20 text-white'
                 }`}
               >
-                <span>{item.label}</span>
-                {item.badge && (
-                  <span className="rounded bg-[#B5121B]/10 px-1.5 py-0.5 text-[10px] font-bold text-[#B5121B]">
-                    {item.badge}
-                  </span>
-                )}
+                <User className="h-4 w-4 text-[#B5121B]" />
+                <span>{user?.firstName || user?.email?.split('@')[0] || 'Mi Perfil'}</span>
               </button>
-            ))}
 
-            {/* Pestaña Exclusiva: Panel Administrador Head */}
-            {user.isAuthenticated && user.isAdminHead && (
               <button
-                onClick={() => navigateTo('admin')}
-                className={`ml-1 flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-sm font-bold transition-colors ${
-                  currentView === 'admin'
-                    ? 'bg-[#171717] text-white shadow-xs'
-                    : 'bg-red-50 text-[#B5121B] hover:bg-[#B5121B] hover:text-white'
-                }`}
+                type="button"
+                onClick={onLogout}
+                title="Cerrar sesión"
+                className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
               >
-                <ShieldCheck className="h-4 w-4" />
-                <span>Panel Admin</span>
+                <LogOut className="h-4 w-4" />
               </button>
-            )}
-          </nav>
+            </>
+          )}
+        </div>
 
-          {/* Acciones de Cuenta Escritorio */}
-          <div className="hidden items-center space-x-3 lg:flex">
-            {user.isAuthenticated ? (
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => navigateTo('profile')}
-                  className={`flex cursor-pointer items-center space-x-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all ${
-                    currentView === 'profile'
-                      ? 'border-[#B5121B] bg-red-50 text-[#B5121B]'
-                      : 'border-[#D1D5DB] bg-white hover:border-[#B5121B]'
-                  }`}
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#B5121B] text-xs font-bold text-white uppercase">
-                    {(user.name || user.email).charAt(0)}
-                  </div>
-                  <span className="max-w-[120px] truncate text-xs font-semibold sm:text-sm">
-                    {(user.name || user.email).split(' ')[0]}
-                  </span>
-                </button>
-                <button
-                  onClick={handleLogout}
-                  title="Cerrar sesión"
-                  className="cursor-pointer rounded-lg p-2 text-[#6B7280] transition-colors hover:bg-red-50 hover:text-[#DC2626]"
-                >
-                  <LogOut className="h-5 w-5" />
-                </button>
-              </div>
-            ) : (
+        {/* Botón menú móvil */}
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="lg:hidden p-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 cursor-pointer"
+        >
+          {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </button>
+      </div>
+
+      {/* Menú desplegable móvil */}
+      {mobileMenuOpen && (
+        <div className="lg:hidden bg-[#171717] border-t border-white/10 px-4 pt-3 pb-5 space-y-2">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleNavClick(item.id)}
+              className={`block w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium ${
+                currentView === item.id
+                  ? 'bg-[#B5121B] text-white font-bold'
+                  : 'text-gray-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+
+          {isAuthenticated && isAdmin && (
+            <button
+              type="button"
+              onClick={() => handleNavClick('admin')}
+              className="flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold bg-red-500/20 text-[#ff8a90] border border-[#B5121B]/40"
+            >
+              <Shield className="h-4 w-4" />
+              Panel Admin
+            </button>
+          )}
+
+          <div className="pt-3 border-t border-white/10 flex flex-col gap-2">
+            {!isAuthenticated ? (
               <>
                 <button
-                  onClick={() => setAuthModal('login')}
-                  className="cursor-pointer rounded-lg border border-transparent px-4 py-2 text-sm font-semibold text-[#171717] transition-colors hover:border-[#D1D5DB] hover:bg-gray-50"
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('login');
+                  }}
+                  className="w-full py-2.5 rounded-lg border border-white/20 text-sm font-semibold text-white"
                 >
-                  Iniciar Sesión
+                  Iniciar sesión
                 </button>
                 <button
-                  onClick={() => setAuthModal('register')}
-                  className="cursor-pointer rounded-lg bg-[#B5121B] px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#8F1720]"
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('register');
+                  }}
+                  className="w-full py-2.5 rounded-lg bg-[#B5121B] text-sm font-semibold text-white"
                 >
                   Registrarse
                 </button>
               </>
-            )}
-          </div>
-
-          {/* Botón Menú Móvil */}
-          <div className="flex items-center lg:hidden">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="cursor-pointer rounded-lg p-2 text-[#171717] hover:bg-gray-100"
-              aria-label="Abrir menú de navegación"
-            >
-              {mobileMenuOpen ? (
-                <X className="h-6 w-6" />
-              ) : (
-                <Menu className="h-6 w-6" />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Menú Desplegable Móvil */}
-      {mobileMenuOpen && (
-        <div className="border-t border-[#D1D5DB] bg-white px-4 pt-2 pb-5 shadow-lg lg:hidden">
-          <div className="space-y-1">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => navigateTo(item.id)}
-                className={`flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium ${
-                  currentView === item.id
-                    ? 'bg-red-50 font-bold text-[#B5121B]'
-                    : 'text-[#171717] hover:bg-gray-50'
-                }`}
-              >
-                <span>{item.label}</span>
-                {item.badge && (
-                  <span className="rounded bg-[#B5121B]/10 px-2 py-0.5 text-[10px] font-bold text-[#B5121B]">
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            ))}
-
-            {/* Pestaña Exclusiva Móvil: Panel Administrador Head */}
-            {user.isAuthenticated && user.isAdminHead && (
-              <button
-                onClick={() => navigateTo('admin')}
-                className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-bold ${
-                  currentView === 'admin'
-                    ? 'bg-[#171717] text-white'
-                    : 'bg-red-50 text-[#B5121B]'
-                }`}
-              >
-                <ShieldCheck className="h-4 w-4" />
-                <span>Panel Admin</span>
-              </button>
-            )}
-          </div>
-
-          <div className="mt-4 border-t border-gray-100 pt-4">
-            {user.isAuthenticated ? (
-              <div className="space-y-2">
+            ) : (
+              <>
                 <button
-                  onClick={() => navigateTo('profile')}
-                  className="flex w-full cursor-pointer items-center space-x-3 rounded-lg border border-[#D1D5DB] px-3 py-2.5 text-left text-sm font-semibold text-[#171717]"
+                  type="button"
+                  onClick={() => handleNavClick('profile')}
+                  className="w-full py-2.5 px-3 rounded-lg bg-white/10 text-left text-sm font-semibold text-white flex items-center gap-2"
                 >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#B5121B] text-xs font-bold text-white uppercase">
-                    {(user.name || user.email).charAt(0)}
-                  </div>
-                  <span>Mi Perfil ({user.name || user.email})</span>
+                  <User className="h-4 w-4 text-[#B5121B]" />
+                  Mi Perfil ({user?.email})
                 </button>
                 <button
-                  onClick={handleLogout}
-                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-red-50 py-2.5 text-sm font-bold text-[#DC2626]"
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="w-full py-2.5 px-3 rounded-lg text-left text-sm font-semibold text-red-400 hover:bg-white/5 flex items-center gap-2"
                 >
                   <LogOut className="h-4 w-4" />
-                  <span>Cerrar sesión</span>
+                  Cerrar sesión
                 </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    setAuthModal('login');
-                  }}
-                  className="cursor-pointer rounded-lg border border-[#D1D5DB] py-2.5 text-center text-sm font-semibold text-[#171717]"
-                >
-                  Iniciar Sesión
-                </button>
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    setAuthModal('register');
-                  }}
-                  className="cursor-pointer rounded-lg bg-[#B5121B] py-2.5 text-center text-sm font-bold text-white"
-                >
-                  Registrarse
-                </button>
-              </div>
+              </>
             )}
           </div>
         </div>
