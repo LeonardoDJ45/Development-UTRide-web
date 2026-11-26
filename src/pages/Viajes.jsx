@@ -174,27 +174,8 @@ export default function Viajes({
             />
           </div>
 
-          {/* Filtro por turno */}
-          <select
-            value={filterShift}
-            onChange={(e) => setFilterShift(e.target.value)}
-            className="rounded-lg border border-[#D1D5DB] bg-white px-3 py-2 text-xs font-medium text-[#171717] outline-none focus:border-[#B5121B]"
-          >
-            <option value="all">Todos los turnos</option>
-            <option value="Matutino">Turno Matutino</option>
-            <option value="Vespertino">Turno Vespertino</option>
-          </select>
 
-          {/* Botón exclusivo para conductores verificados o Admin Head */}
-          {isAuthenticated &&
-            (user?.driverStatus === 'Verificado' || user?.isAdminHead) && (
-              <button
-                onClick={() => setShowPublishModal(true)}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#171717] px-4 py-2 text-xs font-bold text-white shadow transition-all hover:bg-black"
-              >
-                <Plus className="h-4 w-4 text-[#B5121B]" /> Publicar ruta
-              </button>
-            )}
+
         </div>
       </div>
 
